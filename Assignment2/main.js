@@ -164,11 +164,41 @@ custom_cube_geometry.setAttribute('position', new THREE.BufferAttribute(position
 custom_cube_geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 custom_cube_geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
 
-let cube = new THREE.Mesh( custom_cube_geometry, phong_material );
-scene.add(cube);
+// let cube = new THREE.Mesh( custom_cube_geometry, phong_material );
+// scene.add(cube);
 
-// TODO: Implement wireframe geometry
+const wireframe_vertices = new Float32Array([
+    // Front face
+        -l, -l, l,
+        l, -l, l,
+        l, -l, l,
+        l, l, l,
+        l, l, l,
+        -l, l, l,
+        -l, l, l,
+        -l, -l, l,
+    // Top face
+        -l, l, -l,
+        -l, l, l,
+        -l, l, l,
+        l, l, l,
+        l, l, l,
+        l, l, -l,
 
+        -l, -l, l,  
+        -l, -l, -l,
+        l, -l, l,   
+        l, -l, -l, 
+        l, l, l,   
+        l, l, -l,
+        -l, l, l,  
+        -l, l, -l,
+]);
+
+const wireframe_geometry = new THREE.BufferGeometry();
+wireframe_geometry.setAttribute( 'position', new THREE.BufferAttribute( wireframe_vertices, 3 ) );
+
+const wireframe_material = new THREE.LineBasicMaterial({ color: "grey" });
 
 function translationMatrix(tx, ty, tz) {
 	return new THREE.Matrix4().set(
@@ -198,13 +228,22 @@ function scalingMatrix(sx, sy, sz) {
 }
 
 let cubes = [];
+let cubes_wireframe = [];
 
 for (let i = 0; i < 7; i++) {
-	let cube = new THREE.Mesh(custom_cube_geometry, phong_material);
+	// 1. Create Solid Cube
+  let cube = new THREE.Mesh(custom_cube_geometry, phong_material);
+  cube.matrixAutoUpdate = false;
+  cube.visible = true;
+  cubes.push(cube);
+  scene.add(cube);
 
-	cube.matrixAutoUpdate = false;
-	cubes.push(cube);
-	scene.add(cube);
+  // 2. Create Wireframe Cube
+  let wireframe = new THREE.LineSegments(wireframe_geometry, wireframe_material);
+  wireframe.matrixAutoUpdate = false;
+  wireframe.visible = false;
+  cubes_wireframe.push(wireframe);
+  scene.add(wireframe);
 }
 
 // Translate the cubes, OLD CODE ---
@@ -223,30 +262,85 @@ const halfWidth = l * scaleVec.x;
 const halfHeight = l * scaleVec.y;
 
 const angle = 10 * (Math.PI / 180);
-const toTopLeft = translationMatrix(-l, l, 0);
+// const toTopLeft = translationMatrix(-l, l, 0);
+const toTopLeft = translationMatrix(-halfWidth, halfHeight, 0);
 const rotateTilt = rotationMatrixZ(angle);
-const fromBottomLeft = translationMatrix(l, l, 0);
-const stepTransform = new THREE.Matrix4();
+// const fromBottomLeft = translationMatrix(l, l, 0);
+const fromBottomLeft = translationMatrix(halfWidth, halfHeight, 0);
+// const stepTransform = new THREE.Matrix4();
 
-stepTransform.multiplyMatrices(fromBottomLeft, rotateTilt);
-stepTransform.multiply(toTopLeft);
+// stepTransform.multiplyMatrices(fromBottomLeft, rotateTilt);
+// stepTransform.multiply(toTopLeft);
 
-let newMatrix = new THREE.Matrix4();
+// let newMatrix = new THREE.Matrix4();
 
-for (let i = 0; i < cubes.length; i++) {
-  cubes[i].matrix.copy(newMatrix);
-  newMatrix.multiply(stepTransform)
-}
+// for (let i = 0; i < cubes.length; i++) {
+//   cubes[i].matrix.copy(newMatrix);
+//   cubes[i].matrix.multiply(scaling);
+//   newMatrix.multiply(stepTransform)
+// }
+
+let animation_time = 0;
+let delta_animation_time;
+let rotation_angle;
+const clock = new THREE.Clock();
+let still = false;
+
+const MAX_ANGLE = 10 * 2*Math.PI/360 // 10 degrees converted to radians
+const T = 2 // oscilation persiod in seconds
 
 function animate() {
-    
+  delta_animation_time = clock.getDelta();
+
+  if (still) {
+    rotation_angle = MAX_ANGLE;
+  } else {
+    animation_time += delta_animation_time; 
+    const frequency = (2 * Math.PI) / T;
+    rotation_angle = (MAX_ANGLE / 2) * (1 - Math.cos(frequency * animation_time));
+  }
+
+  const rotateTilt = rotationMatrixZ(rotation_angle);
+  const stepTransform = new THREE.Matrix4();
+
+  stepTransform.multiplyMatrices(fromBottomLeft, rotateTilt);
+  stepTransform.multiply(toTopLeft);
+  
+  let newMatrix = new THREE.Matrix4();
+
+  for (let i = 0; i < cubes.length; i++) {
+    cubes[i].matrix.copy(newMatrix);
+    cubes[i].matrix.multiply(scaling);
+
+    cubes_wireframe[i].matrix.copy(newMatrix);
+    cubes_wireframe[i].matrix.multiply(scaling);
+
+    newMatrix.multiply(stepTransform);
+  }
+
 	renderer.render( scene, camera );
-    controls.update();
-
-    // TODO
-    // Animate the cube
-
+  controls.update();
 }
+
 renderer.setAnimationLoop( animate );
 
-// TODO: Add event listener
+window.addEventListener('keydown', onKeyPress); // onKeyPress is called each time a key is pressed
+
+// Function to handle keypress
+function onKeyPress(event) {
+    switch (event.key) {
+        case 's': // Note we only do this if s is pressed.
+          still = !still;
+          break;
+
+        case 'w':
+          for (let i = 0; i < cubes.length; i++) {
+              cubes[i].visible = !cubes[i].visible;
+              cubes_wireframe[i].visible = !cubes[i].visible;
+          }
+          break;
+
+        default:
+          console.log(`Key ${event.key} pressed`);
+    }
+}
